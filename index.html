@@ -14,6 +14,7 @@
     #board { width: 400px; margin: 20px auto; }
     button { 
       padding: 10px 20px; 
+      margin: 5px;
       font-size: 16px; 
       background: #2563eb; 
       color: white; 
@@ -22,13 +23,15 @@
       cursor: pointer;
     }
     #status { margin: 15px; font-size: 18px; }
+    .highlight { box-shadow: inset 0 0 3px 3px yellow; }
   </style>
 </head>
 <body>
   <h1>Chess Coach</h1>
-  <div id="status">Loading...</div>
+  <div id="status">Your turn - play White</div>
   <div id="board"></div>
   <button onclick="newGame()">New Game</button>
+  <button onclick="showHint()">Show Hint</button>
 
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.12.0/chess.min.js"></script>
@@ -37,17 +40,73 @@
   <script>
   $(document).ready(function() {
     var game = new Chess();
-    var board = Chessboard('board', {
+    var board = null;
+
+    function makeBestMove() {
+      var moves = game.moves({verbose: true});
+      if (moves.length === 0) return;
+      
+      // Simple AI: picks captures first, then random
+      var bestMove = moves[0];
+      for (var i = 0; i < moves.length; i++) {
+        if (moves[i].captured) {
+          bestMove = moves[i];
+          break;
+        }
+      }
+      game.move(bestMove);
+      board.position(game.fen());
+      updateStatus();
+    }
+
+    window.showHint = function() {
+      var moves = game.moves({verbose: true});
+      if (moves.length === 0) return;
+      
+      var bestMove = moves[0];
+      for (var i = 0; i < moves.length; i++) {
+        if (moves[i].captured || moves[i].to === 'e4' || moves[i].to === 'd4') {
+          bestMove = moves[i];
+          break;
+        }
+      }
+      
+      board.removeGreySquares();
+      board.greySquare(bestMove.from);
+      board.greySquare(bestMove.to);
+      $('#status').text('Coach: Try ' + bestMove.from + ' to ' + bestMove.to);
+    }
+
+    board = Chessboard('board', {
+      pieceTheme: 'https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/img/chesspieces/wikipedia/{piece}.png',
       draggable: true,
       position: 'start',
       onDrop: function(from, to) {
         var move = game.move({from: from, to: to, promotion: 'q'});
         if (move === null) return 'snapback';
+        
+        board.removeGreySquares();
         updateStatus();
+        
+        // AI moves after 500ms
+        setTimeout(makeBestMove, 500);
       }
     });
 
+    board.removeGreySquares = function() {
+      $('#board .square-55d63').removeClass('highlight');
+    }
+    
+    board.greySquare = function(square) {
+      var squareEl = $('#board .square-' + square);
+      squareEl.addClass('highlight');
+    }
+
     function updateStatus() {
+      if (game.game_over()) {
+        $('#status').text('Game over');
+        return;
+      }
       var status = game.turn() === 'w' ? 'Your turn - play White' : 'AI thinking...';
       $('#status').text(status);
     }
@@ -55,6 +114,7 @@
     window.newGame = function() {
       game.reset();
       board.position('start');
+      board.removeGreySquares();
       updateStatus();
     }
 
