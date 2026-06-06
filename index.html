@@ -1,8 +1,61 @@
 <!DOCTYPE html>
 <html>
-<head><title>Chess Coach</title></head>
-<body style="background:#0f172a;color:white;text-align:center;padding:50px">
-<h1>Chess Coach</h1>
-<button onclick="alert('Game starting soon!')">Start Training</button>
+<head>
+  <title>Chess Coach</title>
+  <link rel="stylesheet" href="https://unpkg.com/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+  <style>
+    body { background:#0f172a; color:white; text-align:center; padding:20px; font-family:sans-serif; }
+    #board { width:400px; margin:20px auto; }
+    #status { margin-top:20px; font-size:18px; }
+    button { background:#3b82f6; color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <h1>Chess Coach</h1>
+  <div id="board"></div>
+  <div id="status">Your turn - play White</div>
+  <button onclick="resetGame()">New Game</button>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  <script src="https://unpkg.com/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+  <script>
+    var game = new Chess();
+    var board = Chessboard('board', {
+      draggable: true,
+      onDrop: onDrop,
+      position: 'start'
+    });
+
+    function onDrop(source, target) {
+      var move = game.move({ from: source, to: target, promotion: 'q' });
+      if (move === null) return 'snapback';
+      updateStatus();
+      window.setTimeout(makeAIMove, 500);
+    }
+
+    function makeAIMove() {
+      var moves = game.moves();
+      if (game.game_over()) return;
+      var move = moves[Math.floor(Math.random() * moves.length)];
+      game.move(move);
+      board.position(game.fen());
+      updateStatus();
+    }
+
+    function updateStatus() {
+      var status = '';
+      if (game.in_checkmate()) status = 'Checkmate! You ' + (game.turn() === 'w' ? 'lost' : 'won');
+      else if (game.in_draw()) status = 'Draw!';
+      else status = (game.turn() === 'w' ? 'Your turn' : 'AI thinking...');
+      $('#status').text(status);
+    }
+
+    function resetGame() {
+      game.reset();
+      board.start();
+      updateStatus();
+    }
+  </script>
 </body>
 </html>
