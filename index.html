@@ -4,26 +4,11 @@
   <title>Chess Coach</title>
   <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
   <style>
-    body { 
-      font-family: Arial; 
-      background: #0a0a0a; 
-      color: white; 
-      text-align: center; 
-      padding: 20px;
-    }
-    #board { width: 400px; margin: 20px auto; }
-    button { 
-      padding: 10px 20px; 
-      margin: 5px;
-      font-size: 16px; 
-      background: #2563eb; 
-      color: white; 
-      border: none; 
-      border-radius: 6px; 
-      cursor: pointer;
-    }
+    body { font-family: Arial; background: #0a0a0a; color: white; text-align: center; padding: 20px; }
+    #board { width: 400px; margin: 20px auto; position: relative; }
+    button { padding: 10px 20px; margin: 5px; font-size: 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; }
     #status { margin: 15px; font-size: 18px; }
-    .highlight { box-shadow: inset 0 0 3px 3px yellow; }
+    #arrowCanvas { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 10; }
   </style>
 </head>
 <body>
@@ -41,40 +26,93 @@
   $(document).ready(function() {
     var game = new Chess();
     var board = null;
+    var canvas = null;
 
-    function makeBestMove() {
+    // Simple 2-ply AI
+    function getBestMove() {
       var moves = game.moves({verbose: true});
-      if (moves.length === 0) return;
-      
-      // Simple AI: picks captures first, then random
+      var bestScore = -9999;
       var bestMove = moves[0];
+      
       for (var i = 0; i < moves.length; i++) {
-        if (moves[i].captured) {
+        game.move(moves[i]);
+        var score = -minimax(1, -9999, 9999);
+        game.undo();
+        if (score > bestScore) {
+          bestScore = score;
           bestMove = moves[i];
-          break;
         }
       }
-      game.move(bestMove);
-      board.position(game.fen());
-      updateStatus();
+      return bestMove;
+    }
+
+    function minimax(depth, alpha, beta) {
+      if (depth === 0 || game.game_over()) return evaluate();
+      var moves = game.moves({verbose: true});
+      var max = -9999;
+      for (var i = 0; i < moves.length; i++) {
+        game.move(moves[i]);
+        var score = -minimax(depth - 1, -beta, -alpha);
+        game.undo();
+        if (score > max) max = score;
+        if (score > alpha) alpha = score;
+        if (alpha >= beta) break;
+      }
+      return max;
+    }
+
+    function evaluate() {
+      var values = {p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000};
+      var score = 0;
+      var board = game.board();
+      for (var i = 0; i < 8; i++) {
+        for (var j = 0; j < 8; j++) {
+          var piece = board[i][j];
+          if (piece) {
+            var val = values[piece.type];
+            score += piece.color === 'w' ? val : -val;
+          }
+        }
+      }
+      return score;
+    }
+
+    function drawArrow(from, to) {
+      clearArrow();
+      var fromEl = $('#board .square-' + from);
+      var toEl = $('#board .square-' + to);
+      var fromPos = fromEl.position();
+      var toPos = toEl.position();
+      var squareSize = fromEl.width();
+      
+      var ctx = canvas.getContext('2d');
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(fromPos.left + squareSize/2, fromPos.top + squareSize/2);
+      ctx.lineTo(toPos.left + squareSize/2, toPos.top + squareSize/2);
+      ctx.stroke();
+      
+      // Arrow head
+      var angle = Math.atan2(toPos.top - fromPos.top, toPos.left - fromPos.left);
+      ctx.beginPath();
+      ctx.moveTo(toPos.left + squareSize/2, toPos.top + squareSize/2);
+      ctx.lineTo(toPos.left + squareSize/2 - 15*Math.cos(angle-Math.PI/6), toPos.top + squareSize/2 - 15*Math.sin(angle-Math.PI/6));
+      ctx.moveTo(toPos.left + squareSize/2, toPos.top + squareSize/2);
+      ctx.lineTo(toPos.left + squareSize/2 - 15*Math.cos(angle+Math.PI/6), toPos.top + squareSize/2 - 15*Math.sin(angle+Math.PI/6));
+      ctx.stroke();
+    }
+
+    function clearArrow() {
+      if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
     }
 
     window.showHint = function() {
       var moves = game.moves({verbose: true});
       if (moves.length === 0) return;
-      
-      var bestMove = moves[0];
-      for (var i = 0; i < moves.length; i++) {
-        if (moves[i].captured || moves[i].to === 'e4' || moves[i].to === 'd4') {
-          bestMove = moves[i];
-          break;
-        }
-      }
-      
-      board.removeGreySquares();
-      board.greySquare(bestMove.from);
-      board.greySquare(bestMove.to);
-      $('#status').text('Coach: Try ' + bestMove.from + ' to ' + bestMove.to);
+      var best = getBestMove();
+      drawArrow(best.from, best.to);
+      $('#status').text('Coach: Play ' + best.from + ' to ' + best.to);
     }
 
     board = Chessboard('board', {
@@ -84,37 +122,36 @@
       onDrop: function(from, to) {
         var move = game.move({from: from, to: to, promotion: 'q'});
         if (move === null) return 'snapback';
-        
-        board.removeGreySquares();
+        clearArrow();
         updateStatus();
-        
-        // AI moves after 500ms
-        setTimeout(makeBestMove, 500);
+        setTimeout(function() {
+          var aiMove = getBestMove();
+          game.move(aiMove);
+          board.position(game.fen());
+          updateStatus();
+        }, 500);
       }
     });
 
-    board.removeGreySquares = function() {
-      $('#board .square-55d63').removeClass('highlight');
-    }
-    
-    board.greySquare = function(square) {
-      var squareEl = $('#board .square-' + square);
-      squareEl.addClass('highlight');
-    }
+    // Add canvas for arrows
+    canvas = document.createElement('canvas');
+    canvas.id = 'arrowCanvas';
+    canvas.width = 400;
+    canvas.height = 400;
+    $('#board').append(canvas);
 
     function updateStatus() {
       if (game.game_over()) {
         $('#status').text('Game over');
         return;
       }
-      var status = game.turn() === 'w' ? 'Your turn - play White' : 'AI thinking...';
-      $('#status').text(status);
+      $('#status').text(game.turn() === 'w' ? 'Your turn - play White' : 'AI thinking...');
     }
 
     window.newGame = function() {
       game.reset();
       board.position('start');
-      board.removeGreySquares();
+      clearArrow();
       updateStatus();
     }
 
